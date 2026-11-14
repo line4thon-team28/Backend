@@ -16,6 +16,8 @@ public interface MatchingSourceRepository extends JpaRepository<MatchingSource, 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select s from MatchingSource s where s.id = :id")
     Optional<MatchingSource> lockById(@Param("id") Long id);
+    @Query("select new com.pawpose.domain.match.pipeline.MatchingProgress(s.status, s.errorCode, case when exists (select r.id from ComparisonRequest r) then true else false end) from MatchingSource s where s.id = :id")
+    Optional<MatchingProgress> progress(@Param("id") Long id);
     @Query("select s.id from MatchingSource s where s.active = true and s.availableAt <= :now and ((s.status = com.pawpose.domain.match.pipeline.ProcessingStatus.PENDING or (s.status = com.pawpose.domain.match.pipeline.ProcessingStatus.FAILED and s.automaticRetry = true)) or (s.status = com.pawpose.domain.match.pipeline.ProcessingStatus.PROCESSING and s.leaseUntil <= :now)) order by case when s.kind = com.pawpose.domain.match.pipeline.SourceKind.LOST_PET then 0 when s.kind = com.pawpose.domain.match.pipeline.SourceKind.SIGHTING then 1 else 2 end, s.availableAt, s.id")
     List<Long> workIds(@Param("now") Instant now, Pageable page);
     @Query("select s from MatchingSource s where s.kind <> com.pawpose.domain.match.pipeline.SourceKind.LOST_PET and s.active = true and s.status = com.pawpose.domain.match.pipeline.ProcessingStatus.READY and s.species = :species and s.modelVersion = :version")

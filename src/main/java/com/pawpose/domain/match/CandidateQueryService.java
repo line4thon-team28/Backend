@@ -21,7 +21,6 @@ public class CandidateQueryService {
     private final LostPetRepository pets;
     private final MatchRepository matches;
     private final MatchingSourceRepository sources;
-    private final ComparisonRequestRepository comparisonRequests;
     private final ObjectMapper mapper;
 
     @Transactional(readOnly = true)
@@ -32,6 +31,7 @@ public class CandidateQueryService {
         MatchingSource source = sources.findByKindAndSourceId(SourceKind.LOST_PET, petId).orElse(null);
         ProcessingStatus state = pet.getStatus() == LostPetStatus.FOUND ? ProcessingStatus.CANCELLED
                 : source == null ? ProcessingStatus.NOT_REQUESTED : source.getStatus();
+        String failureCode = source == null ? null : source.getErrorCode();
         LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
         long pendingTargets = 0, failedTargets = 0;
         if (source != null && source.getOccurredOn() != null && state == ProcessingStatus.READY) {
@@ -42,8 +42,12 @@ public class CandidateQueryService {
                 if (pendingTargets > 0) state = ProcessingStatus.PROCESSING;
                 else if (failedTargets > 0) state = ProcessingStatus.PARTIAL;
             }
-            // A committed target can still be waiting to requeue this source.
-            if (comparisonRequests.existsByIdNotNull()) state = ProcessingStatus.PROCESSING;
+            // Read both sides of the request -> PENDING handoff in one SQL snapshot.
+            // A second entity lookup could return the old READY value from JPA's cache.
+            MatchingProgress progress = sources.progress(source.getId()).orElseThrow();
+            failureCode = progress.errorCode();
+            if (progress.status() != ProcessingStatus.READY) state = progress.status();
+            else if (progress.comparisonQueued()) state = ProcessingStatus.PROCESSING;
         }
         // The product shows the first 20 candidates. Page/size operate within that window.
         var candidates = sort.equals("deadline") ? matches.visibleByDeadline(petId, today, PageRequest.of(0, 20))
@@ -64,7 +68,7 @@ public class CandidateQueryService {
             case READY -> candidates.isEmpty() ? "아직 비슷한 공고가 없어요. 새 공고가 올라오면 알려드릴게요" : null;
         };
         return new CandidatePageResponse(items, page, size, Math.min(20, candidates.getTotalElements()), state, message,
-                source == null ? null : source.getErrorCode(), state == ProcessingStatus.PENDING || state == ProcessingStatus.PROCESSING ? 10 : null, false, pendingTargets, failedTargets);
+                failureCode, state == ProcessingStatus.PENDING || state == ProcessingStatus.PROCESSING ? 10 : null, false, pendingTargets, failedTargets);
     }
 
     private Candidate card(Match m, MatchingSource sighting, LocalDate today) {

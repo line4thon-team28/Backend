@@ -37,6 +37,7 @@ class ComparisonDispatchTest {
     @Autowired CandidateQueryService queries;
     @Autowired TransactionTemplate tx;
     @Autowired ApplicationEventPublisher events;
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
     @MockitoBean EmbeddingClient embedding;
     private User owner;
     private LostPet pet;
@@ -222,6 +223,35 @@ class ComparisonDispatchTest {
         assertThat(requests.count()).isZero();
         assertThat(matches.findByLostPetId(pet.getId())).hasSize(1);
         verifyNoInteractions(embedding);
+    }
+
+    @Test void statusQueryKeepsPollingWhenDispatchCommitsBetweenItsReads() throws Exception {
+        inputs.registerLostPet(pet.getId(), profile());
+        worker.process(lostSource().getId());
+        work.completeTarget(target(), vectors);
+        CountDownLatch stateRead = new CountDownLatch(1), dispatched = new CountDownLatch(1);
+        Long lostId = lostSource().getId();
+        doAnswer(invocation -> {
+            stateRead.countDown();
+            await(dispatched);
+            // Execute the scalar snapshot on the query transaction's actual connection.
+            return Optional.ofNullable(jdbc.queryForObject(
+                    "select status, error_code, exists(select 1 from matching_comparison_request) as queued from matching_source where id = ?",
+                    (rs, row) -> new MatchingProgress(ProcessingStatus.valueOf(rs.getString("status")), rs.getString("error_code"), rs.getBoolean("queued")), lostId));
+        }).when(sources).progress(lostId);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            var response = executor.submit(() -> queries.list(owner.getId(), pet.getId(), "similarity", 0, 20));
+            await(stateRead);
+            comparisons.dispatchPending();
+            assertThat(requests.count()).isZero();
+            assertThat(lostSource().getStatus()).isEqualTo(ProcessingStatus.PENDING);
+            dispatched.countDown();
+            var page = response.get(15, TimeUnit.SECONDS);
+            assertThat(page.processingStatus()).isEqualTo(ProcessingStatus.PENDING);
+            assertThat(page.retryAfterSeconds()).isEqualTo(10);
+            assertThat(queries.list(owner.getId(), pet.getId(), "similarity", 0, 20).processingStatus()).isEqualTo(ProcessingStatus.PENDING);
+        } finally { dispatched.countDown(); executor.shutdownNow(); }
     }
 
     private MatchingWorkService.Work target() {

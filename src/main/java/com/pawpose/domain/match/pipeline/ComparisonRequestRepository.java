@@ -14,6 +14,4 @@ public interface ComparisonRequestRepository extends JpaRepository<ComparisonReq
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select r from ComparisonRequest r where r.id = :id")
     Optional<ComparisonRequest> lockById(@Param("id") Long id);
-
-    boolean existsByIdNotNull();
 }
