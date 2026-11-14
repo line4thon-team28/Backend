@@ -14,6 +14,8 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import org.hibernate.annotations.DynamicUpdate;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -26,7 +28,10 @@ import java.time.LocalDateTime;
  */
 @Getter
 @Entity
-@Table(name = "matches")
+@Table(name = "matches", uniqueConstraints = {
+        @UniqueConstraint(name = "uk_match_notice", columnNames = {"lost_pet_id", "notice_id"}),
+        @UniqueConstraint(name = "uk_match_sighting", columnNames = {"lost_pet_id", "sighting_id"})})
+@DynamicUpdate
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Match extends BaseTimeEntity {
 
@@ -61,6 +66,12 @@ public class Match extends BaseTimeEntity {
 
     private LocalDateTime feedbackAt;
 
+    @Column(nullable = false, columnDefinition = "boolean default true")
+    private boolean eligible = true;
+    private Double rawSimilarity;
+    @Column(length = 200)
+    private String modelVersion;
+
     public static Match ofNotice(LostPet lostPet, Notice notice, double similarity) {
         Match match = new Match();
         match.lostPet = lostPet;
@@ -85,6 +96,12 @@ public class Match extends BaseTimeEntity {
     public void updateSimilarity(double similarity) {
         this.similarity = similarity;
     }
+
+    public void updateScore(double similarity, double rawSimilarity, String modelVersion) {
+        this.similarity = similarity; this.rawSimilarity = rawSimilarity;
+        this.modelVersion = modelVersion; this.eligible = true;
+    }
+    public void exclude() { this.eligible = false; }
 
     public void applyFeedback(MatchFeedback feedback) {
         this.feedback = feedback;
