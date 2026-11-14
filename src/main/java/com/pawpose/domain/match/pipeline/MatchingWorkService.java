@@ -14,7 +14,7 @@ import java.util.stream.Collectors;
 @Service @RequiredArgsConstructor
 public class MatchingWorkService {
     private final MatchingSourceRepository sources;
-    private final MatchingInputService inputs;
+    private final ComparisonRequestRepository comparisonRequests;
     private final MatchingProperties properties;
     private final MatchingJson json;
     private final LostPetRepository lostPets;
@@ -61,7 +61,7 @@ public class MatchingWorkService {
         MatchingSource s = sources.lockById(work.source().getId()).orElseThrow();
         if (!s.owned(work.token(), work.generation())) return;
         s.complete(json.write(vectors), properties.getModelVersion());
-        inputs.enqueueLostPets();
+        comparisonRequests.save(ComparisonRequest.create());
     }
 
     @Transactional

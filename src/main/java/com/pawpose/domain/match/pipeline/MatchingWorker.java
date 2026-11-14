@@ -14,12 +14,15 @@ public class MatchingWorker {
     private final MatchingWorkService workService;
     private final EmbeddingClient embedding;
     private final MatchingJson json;
+    private final ComparisonDispatchService comparisons;
 
     @Scheduled(fixedDelayString = "${pawpose.matching.poll-ms:10000}", initialDelayString = "${pawpose.matching.initial-delay-ms:10000}")
     public void poll() {
         if (!properties.isEnabled()) return;
+        comparisons.dispatchPending();
         workService.requeueOutdatedModels();
         for (Long id : sources.workIds(Instant.now(), PageRequest.of(0, 10))) process(id);
+        comparisons.dispatchPending();
     }
 
     public void process(Long id) {

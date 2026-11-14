@@ -30,6 +30,7 @@ class MatchingPipelineTest {
     @org.springframework.test.context.bean.override.mockito.MockitoSpyBean MatchingSourceRepository sources;
     @Autowired MatchingWorker worker;
     @Autowired MatchingWorkService work;
+    @Autowired ComparisonDispatchService comparisons;
     @Autowired MatchingJson json;
     @Autowired MatchingProperties properties;
     @Autowired LostPetRepository pets;
@@ -57,7 +58,7 @@ class MatchingPipelineTest {
     MatchingProfile profile(String image) { return new MatchingProfile(List.of(image), today.minusDays(2), "6110000", "3080000", "cat", "white", "street"); }
     MatchingSource source(SourceKind kind, long id) { return sources.findByKindAndSourceId(kind, id).orElseThrow(); }
     void lost() { inputs.registerLostPet(pet.getId(), profile("https://storage.example/lost.png")); }
-    void sighting(long id) { inputs.registerSighting(id, Species.CAT, profile("https://storage.example/sighting.png")); worker.process(source(SourceKind.SIGHTING, id).getId()); }
+    void sighting(long id) { inputs.registerSighting(id, Species.CAT, profile("https://storage.example/sighting.png")); worker.process(source(SourceKind.SIGHTING, id).getId()); comparisons.dispatchPending(); }
     void runLost() { worker.process(source(SourceKind.LOST_PET, pet.getId()).getId()); }
 
     @Test void newLostMatchesExistingSightingAndPreservesFeedbackAndOneNotification() {
@@ -244,6 +245,7 @@ class MatchingPipelineTest {
         lost();
         long target = System.nanoTime(); inputs.registerSighting(target, Species.CAT, profile("https://storage.example/target.png"));
         var targetWork = work.claim(source(SourceKind.SIGHTING, target).getId()).orElseThrow();
+        work.completeTarget(targetWork, new double[][]{{1,0}});
         CountDownLatch idsRead = new CountDownLatch(1), updated = new CountDownLatch(1);
         List<Long> selectedIds = List.of(source(SourceKind.LOST_PET, pet.getId()).getId());
         doAnswer(invocation -> {
@@ -253,7 +255,7 @@ class MatchingPipelineTest {
         }).when(sources).activeSourceIds(SourceKind.LOST_PET);
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
-            Future<?> fanout = executor.submit(() -> work.completeTarget(targetWork, new double[][]{{1,0}}));
+            Future<?> fanout = executor.submit(comparisons::dispatchPending);
             assertThat(idsRead.await(10, TimeUnit.SECONDS)).isTrue();
             inputs.registerLostPet(pet.getId(), profile("https://storage.example/new-photo.png"));
             long generation = source(SourceKind.LOST_PET, pet.getId()).getGeneration();
@@ -271,7 +273,7 @@ class MatchingPipelineTest {
                 .imageUrl("https://www.animal.go.kr/old.png").status(NoticeStatus.NOTICE).build());
         tx.executeWithoutResult(s -> events.publishEvent(new NoticeCollectedEvent(before.getId())));
         assertThat(source(SourceKind.NOTICE, before.getId()).getOccurredOn()).isEqualTo(today.minusDays(3));
-        worker.process(source(SourceKind.NOTICE, before.getId()).getId()); runLost();
+        worker.process(source(SourceKind.NOTICE, before.getId()).getId()); comparisons.dispatchPending(); runLost();
         assertThat(matches.findByLostPetId(pet.getId())).noneMatch(m -> m.getNotice()!=null && m.getNotice().getId().equals(before.getId()));
     }
 

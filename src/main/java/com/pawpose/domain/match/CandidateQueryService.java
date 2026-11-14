@@ -21,6 +21,7 @@ public class CandidateQueryService {
     private final LostPetRepository pets;
     private final MatchRepository matches;
     private final MatchingSourceRepository sources;
+    private final ComparisonRequestRepository comparisonRequests;
     private final ObjectMapper mapper;
 
     @Transactional(readOnly = true)
@@ -41,6 +42,8 @@ public class CandidateQueryService {
                 if (pendingTargets > 0) state = ProcessingStatus.PROCESSING;
                 else if (failedTargets > 0) state = ProcessingStatus.PARTIAL;
             }
+            // A committed target can still be waiting to requeue this source.
+            if (comparisonRequests.existsByIdNotNull()) state = ProcessingStatus.PROCESSING;
         }
         // The product shows the first 20 candidates. Page/size operate within that window.
         var candidates = sort.equals("deadline") ? matches.visibleByDeadline(petId, today, PageRequest.of(0, 20))

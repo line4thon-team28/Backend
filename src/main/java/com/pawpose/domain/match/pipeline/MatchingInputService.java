@@ -19,6 +19,7 @@ public class MatchingInputService {
     private final LostPetRepository lostPets;
     private final NoticeRepository notices;
     private final MatchingJson json;
+    private final ComparisonRequestRepository comparisonRequests;
 
     /** Call within the registration transaction after saving LostPet. URLs must be server-issued storage URLs. */
     @Transactional
@@ -46,7 +47,7 @@ public class MatchingInputService {
                 n.getHappenDate() != null ? n.getHappenDate() : n.getNoticeStartDate(),
                 n.getSidoCode(), n.getSigunguCode(), n.getBreed(), n.getColor(), n.getHappenPlace()), active);
         // Closing/changing a target also invalidates previously computed candidate eligibility.
-        if (!active) enqueueLostPets();
+        if (!active) comparisonRequests.save(ComparisonRequest.create());
     }
 
     @Transactional
@@ -76,9 +77,6 @@ public class MatchingInputService {
                 .orElseGet(() -> MatchingSource.create(kind, id));
         source.register(species, profile, json.write(profile.imageUrls()), active);
         sources.save(source);
-    }
-    void enqueueLostPets() {
-        for (Long id : sources.activeSourceIds(SourceKind.LOST_PET)) sources.lockById(id).orElseThrow().requestComparison();
     }
     private void validate(MatchingProfile p, int max) {
         if (p == null || p.imageUrls().isEmpty() || p.imageUrls().size() > max || p.imageUrls().stream().anyMatch(u -> u == null || u.isBlank() || u.length() > 2048)
