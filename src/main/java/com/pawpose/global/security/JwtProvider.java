@@ -20,9 +20,13 @@ public class JwtProvider {
     private final long validityMillis;
 
     public JwtProvider(JwtProperties properties) {
-        byte[] secretBytes = properties.secret().getBytes(StandardCharsets.UTF_8);
+        String secret = properties.secret();
+        if (secret == null || secret.isBlank()) {
+            throw new IllegalStateException("JWT_SECRET 이 설정되지 않았습니다. 서버 환경변수를 확인하세요.");
+        }
+        byte[] secretBytes = secret.getBytes(StandardCharsets.UTF_8);
         if (secretBytes.length < 32) {
-            throw new IllegalStateException("JWT_SECRET 은 32자 이상이어야 합니다.");
+            throw new IllegalStateException("JWT_SECRET 은 32바이트 이상이어야 합니다.");
         }
         this.key = Keys.hmacShaKeyFor(secretBytes);
         this.validityMillis = Duration.ofDays(properties.accessTokenValidityDays()).toMillis();

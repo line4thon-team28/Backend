@@ -2,7 +2,6 @@ spring:
   application:
     name: pawpose
   config:
-    # 프로젝트 루트의 .env 파일을 읽어옴 (KEY=VALUE 형식)
     import: optional:file:.env[.properties]
   profiles:
     default: local
@@ -19,7 +18,8 @@ spring:
       max-request-size: 50MB
 
 jwt:
-  secret: ${JWT_SECRET:local-dev-secret-key-please-change-0123456789}
+  # 기본값 없음: prod 에서 JWT_SECRET 이 없으면 서버가 시작되지 않음
+  secret: ${JWT_SECRET}
   access-token-validity-days: 7
 
 kakao:
@@ -48,6 +48,10 @@ spring:
     hibernate:
       ddl-auto: create
     show-sql: true
+
+# 로컬 전용 개발 키 (.env 에 JWT_SECRET 이 있으면 그 값이 우선)
+jwt:
+  secret: ${JWT_SECRET:local-dev-secret-key-please-change-0123456789}
 
 ---
 spring:

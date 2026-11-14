@@ -76,7 +76,29 @@ class ApiFlowTest {
                         .content(json(uniqueEmail(), "short", "민지")))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_INPUT"))
-                .andExpect(jsonPath("$.message").value("비밀번호는 8자 이상이어야 해요"));
+                .andExpect(jsonPath("$.message").value("비밀번호는 8~64자로 입력해주세요"));
+    }
+
+    @Test
+    void 이메일_100자_초과와_72바이트_넘는_비밀번호는_400() throws Exception {
+        String longEmail = "a".repeat(60) + "@" + "b".repeat(36) + ".com"; // 101자 (형식은 정상)
+        mvc.perform(post("/api/v1/auth/signup").contentType(MediaType.APPLICATION_JSON)
+                        .content(json(longEmail, "password1234", "민지")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"))
+                .andExpect(jsonPath("$.message").value("이메일은 100자 이하로 입력해주세요"));
+
+        String koreanPassword = "가".repeat(25); // 25자지만 UTF-8 75바이트
+        mvc.perform(post("/api/v1/auth/signup").contentType(MediaType.APPLICATION_JSON)
+                        .content(json(uniqueEmail(), koreanPassword, "민지")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"))
+                .andExpect(jsonPath("$.message").value("비밀번호가 너무 길어요. 조금 더 짧게 입력해주세요"));
+
+        mvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + uniqueEmail() + "\",\"password\":\"" + koreanPassword + "\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("LOGIN_FAILED"));
     }
 
     @Test

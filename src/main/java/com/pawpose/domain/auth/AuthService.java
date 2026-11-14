@@ -18,6 +18,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 
 @Service
@@ -46,6 +47,10 @@ public class AuthService {
     /** 이메일·비밀번호 중 어느 쪽이 틀렸는지 알려주지 않음 (명세 F-01 예외) */
     @Transactional(readOnly = true)
     public TokenResponse login(LoginRequest request) {
+        // 72바이트 초과 비밀번호는 BCrypt 가 처리하지 못하므로 비교 전에 실패 처리
+        if (request.password().getBytes(StandardCharsets.UTF_8).length > SignupRequest.BCRYPT_MAX_BYTES) {
+            throw new BusinessException(ErrorCode.LOGIN_FAILED);
+        }
         User user = userRepository.findByEmail(request.email().trim().toLowerCase())
                 .filter(u -> u.getProvider() == AuthProvider.LOCAL)
                 .filter(u -> passwordEncoder.matches(request.password(), u.getPassword()))
