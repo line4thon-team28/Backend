@@ -73,4 +73,3 @@ class SiglipEmbedder:
         with self.torch.inference_mode():
             vector = self.model(**inputs).pooler_output[0].tolist()
         return normalize(vector)
-

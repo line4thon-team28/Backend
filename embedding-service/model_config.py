@@ -9,4 +9,3 @@ DIMENSIONS = LOCK["dimensions"]
 MODEL_DIR = ROOT / ".models" / LOCK["revision"]
 MAX_BYTES = 10 * 1024 * 1024
 MAX_PIXELS = 16_000_000
-
