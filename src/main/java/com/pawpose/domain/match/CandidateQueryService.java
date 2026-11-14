@@ -32,6 +32,16 @@ public class CandidateQueryService {
         ProcessingStatus state = pet.getStatus() == LostPetStatus.FOUND ? ProcessingStatus.CANCELLED
                 : source == null ? ProcessingStatus.NOT_REQUESTED : source.getStatus();
         LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
+        long pendingTargets = 0, failedTargets = 0;
+        if (source != null && source.getOccurredOn() != null && state == ProcessingStatus.READY) {
+            var regions = RegionPolicy.matchingRegions(source.getSidoCode());
+            if (!regions.isEmpty()) {
+                pendingTargets = sources.unfinishedTargets(pet.getSpecies(), source.getOccurredOn(), regions, List.of(ProcessingStatus.PENDING, ProcessingStatus.PROCESSING), today);
+                failedTargets = sources.unfinishedTargets(pet.getSpecies(), source.getOccurredOn(), regions, List.of(ProcessingStatus.FAILED), today);
+                if (pendingTargets > 0) state = ProcessingStatus.PROCESSING;
+                else if (failedTargets > 0) state = ProcessingStatus.PARTIAL;
+            }
+        }
         // The product shows the first 20 candidates. Page/size operate within that window.
         var candidates = sort.equals("deadline") ? matches.visibleByDeadline(petId, today, PageRequest.of(0, 20))
                 : matches.visibleBySimilarity(petId, today, PageRequest.of(0, 20));
@@ -47,10 +57,11 @@ public class CandidateQueryService {
             case FAILED -> "사진 분석에 실패했어요. 잠시 후 다시 비교할게요";
             case NOT_REQUESTED -> "매칭에 필요한 등록 정보를 기다리고 있어요";
             case CANCELLED -> "찾음 처리되어 새로운 비교를 중단했어요";
+            case PARTIAL -> "일부 후보 사진을 분석하지 못했어요. 확인된 후보부터 보여드릴게요";
             case READY -> candidates.isEmpty() ? "아직 비슷한 공고가 없어요. 새 공고가 올라오면 알려드릴게요" : null;
         };
         return new CandidatePageResponse(items, page, size, Math.min(20, candidates.getTotalElements()), state, message,
-                source == null ? null : source.getErrorCode(), state == ProcessingStatus.PENDING || state == ProcessingStatus.PROCESSING ? 10 : null, false);
+                source == null ? null : source.getErrorCode(), state == ProcessingStatus.PENDING || state == ProcessingStatus.PROCESSING ? 10 : null, false, pendingTargets, failedTargets);
     }
 
     private Candidate card(Match m, MatchingSource sighting, LocalDate today) {

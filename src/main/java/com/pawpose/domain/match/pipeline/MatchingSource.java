@@ -30,6 +30,7 @@ public class MatchingSource {
     private long generation;
     private int attempts;
     private boolean automaticRetry = true;
+    private boolean comparisonPending;
     @Column(name = "available_at", nullable = false) private Instant availableAt;
     private Instant leaseUntil;
     @Column(length = 36) private String leaseToken;
@@ -50,7 +51,7 @@ public class MatchingSource {
     }
 
     void enqueue() {
-        generation++; attempts = 0; automaticRetry = true; status = ProcessingStatus.PENDING;
+        generation++; attempts = 0; automaticRetry = true; comparisonPending = false; status = ProcessingStatus.PENDING;
         availableAt = Instant.now(); leaseToken = null; leaseUntil = null; errorCode = null;
     }
 
@@ -62,12 +63,20 @@ public class MatchingSource {
     }
 
     boolean owned(String token, long generation) { return this.generation == generation && token.equals(leaseToken) && status == ProcessingStatus.PROCESSING; }
+    void requestComparison() {
+        if (!active) return;
+        if (status == ProcessingStatus.READY) enqueue();
+        else if (status == ProcessingStatus.PROCESSING) comparisonPending = true;
+        // PENDING already has work scheduled. FAILED retains retry/backoff/manual-retry policy.
+    }
     void complete(String vectors, String version) {
         vectorsJson = vectors; modelVersion = version; status = ProcessingStatus.READY;
         errorCode = null; leaseToken = null; leaseUntil = null;
+        if (comparisonPending) enqueue();
     }
     void fail(String code, int maxAttempts, boolean retryable) {
         errorCode = code; leaseToken = null; leaseUntil = null;
+        comparisonPending = false;
         automaticRetry = retryable;
         status = retryable && attempts < maxAttempts ? ProcessingStatus.PENDING : ProcessingStatus.FAILED;
         availableAt = Instant.now().plusSeconds(status == ProcessingStatus.FAILED ? 1800 : 30L * (1L << Math.min(attempts, 5)));

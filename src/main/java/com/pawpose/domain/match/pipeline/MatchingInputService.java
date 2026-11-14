@@ -43,7 +43,7 @@ public class MatchingInputService {
                 && (n.getNoticeEndDate() == null || !n.getNoticeEndDate().isBefore(LocalDate.now(ZoneId.of("Asia/Seoul"))));
         register(SourceKind.NOTICE, n.getId(), n.getSpecies(), new MatchingProfile(
                 n.getImageUrl() == null ? List.of() : List.of(n.getImageUrl()),
-                n.getNoticeStartDate() != null ? n.getNoticeStartDate() : n.getHappenDate(),
+                n.getHappenDate() != null ? n.getHappenDate() : n.getNoticeStartDate(),
                 n.getSidoCode(), n.getSigunguCode(), n.getBreed(), n.getColor(), n.getHappenPlace()), active);
         // Closing/changing a target also invalidates previously computed candidate eligibility.
         if (!active) enqueueLostPets();
@@ -53,9 +53,9 @@ public class MatchingInputService {
     public void retry(Long userId, Long lostPetId) {
         LostPet pet = ownedLocked(userId, lostPetId);
         if (pet.getStatus() != LostPetStatus.SEARCHING) throw new BusinessException(ErrorCode.MATCHING_STOPPED);
-        MatchingSource source = sources.findByKindAndSourceId(SourceKind.LOST_PET, lostPetId)
+        Long sourceId = sources.findSourceId(SourceKind.LOST_PET, lostPetId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.MATCHING_NOT_REGISTERED));
-        source = sources.lockById(source.getId()).orElseThrow();
+        MatchingSource source = sources.lockById(sourceId).orElseThrow();
         if (source.getStatus() == ProcessingStatus.FAILED) source.enqueue();
     }
 
@@ -63,7 +63,7 @@ public class MatchingInputService {
     @Transactional
     public void markFound(Long userId, Long lostPetId) {
         LostPet pet = ownedLocked(userId, lostPetId); pet.markFound();
-        sources.findByKindAndSourceId(SourceKind.LOST_PET, lostPetId).ifPresent(s -> sources.lockById(s.getId()).orElseThrow().cancel());
+        sources.findSourceId(SourceKind.LOST_PET, lostPetId).ifPresent(id -> sources.lockById(id).orElseThrow().cancel());
     }
 
     private LostPet ownedLocked(Long userId, Long id) {
@@ -72,13 +72,13 @@ public class MatchingInputService {
         return pet;
     }
     private void register(SourceKind kind, Long id, Species species, MatchingProfile profile, boolean active) {
-        MatchingSource source = sources.findByKindAndSourceId(kind, id).map(s -> sources.lockById(s.getId()).orElseThrow())
+        MatchingSource source = sources.findSourceId(kind, id).map(sourceId -> sources.lockById(sourceId).orElseThrow())
                 .orElseGet(() -> MatchingSource.create(kind, id));
         source.register(species, profile, json.write(profile.imageUrls()), active);
         sources.save(source);
     }
     void enqueueLostPets() {
-        for (MatchingSource s : sources.findByKindAndActiveTrueOrderById(SourceKind.LOST_PET)) sources.lockById(s.getId()).orElseThrow().enqueue();
+        for (Long id : sources.activeSourceIds(SourceKind.LOST_PET)) sources.lockById(id).orElseThrow().requestComparison();
     }
     private void validate(MatchingProfile p, int max) {
         if (p == null || p.imageUrls().isEmpty() || p.imageUrls().size() > max || p.imageUrls().stream().anyMatch(u -> u == null || u.isBlank() || u.length() > 2048)

@@ -27,7 +27,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest @AutoConfigureMockMvc
 class MatchingPipelineTest {
     @Autowired MatchingInputService inputs;
-    @Autowired MatchingSourceRepository sources;
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean MatchingSourceRepository sources;
     @Autowired MatchingWorker worker;
     @Autowired MatchingWorkService work;
     @Autowired MatchingJson json;
@@ -195,6 +195,84 @@ class MatchingPipelineTest {
         for (String url : List.of("file:///etc/passwd", "http://localhost/a.png", "https://evil.example/a.png", "https://user@www.animal.go.kr/a.png", "https://www.animal.go.kr:444/a.png")) {
             assertThatThrownBy(() -> client.download(url)).isInstanceOf(IllegalArgumentException.class);
         }
+    }
+
+    @Test void unfinishedTargetsKeepPollingAndFailuresArePartialResults() {
+        var island = new MatchingProfile(List.of("https://storage.example/island.png"), today, "6500000", "6510000", null, null, "island");
+        inputs.registerLostPet(pet.getId(), island);
+        long target = System.nanoTime(); inputs.registerSighting(target, Species.CAT, island);
+        runLost();
+        var waiting = queries.list(owner.getId(), pet.getId(), "similarity", 0, 20);
+        assertThat(waiting.processingStatus()).isEqualTo(ProcessingStatus.PROCESSING);
+        assertThat(waiting.pendingTargetCount()).isPositive();
+        when(embedding.embed(anyString())).thenThrow(new AnalysisException("UNSUPPORTED_IMAGE", false));
+        worker.process(source(SourceKind.SIGHTING, target).getId());
+        var partial = queries.list(owner.getId(), pet.getId(), "similarity", 0, 20);
+        assertThat(partial.processingStatus()).isEqualTo(ProcessingStatus.PARTIAL);
+        assertThat(partial.failedTargetCount()).isPositive();
+        assertThat(partial.processingMessage()).doesNotContain("아직 비슷한 공고가 없어요");
+    }
+
+    @Test void newTargetCannotResetPermanentFailureOrTransientBackoff() {
+        lost(); when(embedding.embed(anyString())).thenThrow(new AnalysisException("UNSUPPORTED_IMAGE", false)); runLost();
+        MatchingSource failed = source(SourceKind.LOST_PET, pet.getId());
+        doReturn(new double[]{1,0}).when(embedding).embed(anyString()); sighting(System.nanoTime());
+        MatchingSource after = source(SourceKind.LOST_PET, pet.getId());
+        assertThat(after.getStatus()).isEqualTo(ProcessingStatus.FAILED);
+        assertThat(after.isAutomaticRetry()).isFalse();
+        assertThat(after.getAvailableAt()).isEqualTo(failed.getAvailableAt());
+        inputs.retry(owner.getId(), pet.getId());
+        when(embedding.embed(anyString())).thenThrow(new AnalysisException("EMBEDDING_HTTP_503", true)); runLost();
+        MatchingSource delayed = source(SourceKind.LOST_PET, pet.getId());
+        doReturn(new double[]{1,0}).when(embedding).embed(anyString()); sighting(System.nanoTime());
+        after = source(SourceKind.LOST_PET, pet.getId());
+        assertThat(after.getAttempts()).isEqualTo(delayed.getAttempts());
+        assertThat(after.getAvailableAt()).isEqualTo(delayed.getAvailableAt());
+        assertThat(after.getErrorCode()).isEqualTo(delayed.getErrorCode());
+    }
+
+    @Test void targetFinishingDuringLostAnalysisSchedulesAnotherComparisonWithoutDiscardingVectors() {
+        lost(); var claim = work.claim(source(SourceKind.LOST_PET, pet.getId()).getId()).orElseThrow();
+        sighting(System.nanoTime());
+        work.completeLostPet(claim, new double[][]{{1,0}}, List.of());
+        MatchingSource after = source(SourceKind.LOST_PET, pet.getId());
+        assertThat(after.getStatus()).isEqualTo(ProcessingStatus.PENDING);
+        assertThat(after.getVectorsJson()).isNotNull();
+    }
+
+    @Test void automaticFanoutReadsProfileOnlyAfterAcquiringLock() throws Exception {
+        lost();
+        long target = System.nanoTime(); inputs.registerSighting(target, Species.CAT, profile("https://storage.example/target.png"));
+        var targetWork = work.claim(source(SourceKind.SIGHTING, target).getId()).orElseThrow();
+        CountDownLatch idsRead = new CountDownLatch(1), updated = new CountDownLatch(1);
+        List<Long> selectedIds = List.of(source(SourceKind.LOST_PET, pet.getId()).getId());
+        doAnswer(invocation -> {
+            idsRead.countDown();
+            if (!updated.await(10, TimeUnit.SECONDS)) throw new IllegalStateException("update timeout");
+            return selectedIds;
+        }).when(sources).activeSourceIds(SourceKind.LOST_PET);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<?> fanout = executor.submit(() -> work.completeTarget(targetWork, new double[][]{{1,0}}));
+            assertThat(idsRead.await(10, TimeUnit.SECONDS)).isTrue();
+            inputs.registerLostPet(pet.getId(), profile("https://storage.example/new-photo.png"));
+            long generation = source(SourceKind.LOST_PET, pet.getId()).getGeneration();
+            updated.countDown(); fanout.get(15, TimeUnit.SECONDS);
+            var latest = source(SourceKind.LOST_PET, pet.getId());
+            assertThat(latest.getImagesJson()).contains("new-photo.png");
+            assertThat(latest.getGeneration()).isEqualTo(generation);
+        } finally { updated.countDown(); executor.shutdownNow(); }
+    }
+
+    @Test void rescueBeforeDisappearanceIsNotAdmittedByLaterNoticeDate() {
+        lost();
+        Notice before = notices.save(Notice.builder().desertionNo(UUID.randomUUID().toString().substring(0,25)).species(Species.CAT)
+                .happenDate(today.minusDays(3)).noticeStartDate(today).noticeEndDate(today.plusDays(7))
+                .imageUrl("https://www.animal.go.kr/old.png").status(NoticeStatus.NOTICE).build());
+        tx.executeWithoutResult(s -> events.publishEvent(new NoticeCollectedEvent(before.getId())));
+        assertThat(source(SourceKind.NOTICE, before.getId()).getOccurredOn()).isEqualTo(today.minusDays(3));
+        worker.process(source(SourceKind.NOTICE, before.getId()).getId()); runLost();
+        assertThat(matches.findByLostPetId(pet.getId())).noneMatch(m -> m.getNotice()!=null && m.getNotice().getId().equals(before.getId()));
     }
 
     private Notice notice(LocalDate end) {

@@ -32,4 +32,9 @@ public final class RegionPolicy {
         a = canonical(a); b = canonical(b);
         return a != null && b != null && (a.equals(b) || EDGES.contains(a + ":" + b) || EDGES.contains(b + ":" + a));
     }
+    public static Set<String> matchingRegions(String province) {
+        Set<String> result = new HashSet<>();
+        for (String code : NAMES.values()) if (nearby(province, code)) result.add(code);
+        return result;
+    }
 }

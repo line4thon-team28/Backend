@@ -17,7 +17,7 @@ public class CandidateController {
     private final CandidateQueryService queries;
     private final MatchingInputService inputs;
 
-    @Operation(summary = "내 실종 등록의 후보 목록", description = "sort=similarity 또는 deadline. YES 우선, NO 제외. 마감일 없는 목격 후보는 마감임박순에서 뒤에 배치합니다. 상위 20건 안에서 page(0부터), size(1~20)를 적용합니다. 점수는 동일 동물일 확률이 아닙니다. PENDING/PROCESSING이면 10초 후 다시 조회합니다.")
+    @Operation(summary = "내 실종 등록의 후보 목록", description = "sort=similarity 또는 deadline. YES 우선, NO 제외. 마감일 없는 목격 후보는 마감임박순에서 뒤에 배치합니다. 상위 20건 안에서 page(0부터), size(1~20)를 적용합니다. 점수는 동일 동물일 확률이 아닙니다. PENDING/PROCESSING이면 10초 후 다시 조회합니다. 비교 대상 사진 일부 실패는 PARTIAL과 failedTargetCount로 알립니다. READY일 때만 전체 비교 완료로 표시합니다.")
     @GetMapping
     public ApiResponse<CandidatePageResponse> list(@AuthenticationPrincipal Long userId, @PathVariable Long lostPetId,
             @RequestParam(defaultValue = "similarity") String sort, @RequestParam(defaultValue = "0") int page,

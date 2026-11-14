@@ -25,8 +25,8 @@ public class MatchingWorkService {
 
     @Transactional
     public void requeueOutdatedModels() {
-        for (MatchingSource source : sources.findByActiveTrueAndStatusAndModelVersionNot(ProcessingStatus.READY, properties.getModelVersion())) {
-            MatchingSource locked = sources.lockById(source.getId()).orElseThrow();
+        for (Long id : sources.outdatedSourceIds(properties.getModelVersion())) {
+            MatchingSource locked = sources.lockById(id).orElseThrow();
             if (locked.isActive() && locked.getStatus() == ProcessingStatus.READY && !properties.getModelVersion().equals(locked.getModelVersion())) locked.enqueue();
         }
     }
