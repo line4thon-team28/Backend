@@ -55,4 +55,7 @@ public class LostPet extends BaseTimeEntity {
     public boolean isOwnedBy(Long userId) {
         return user.getId().equals(userId);
     }
+
+    /** Invoke through MatchingInputService.markFound so in-flight matching uses the same lock. */
+    public void markFound() { this.status = LostPetStatus.FOUND; }
 }

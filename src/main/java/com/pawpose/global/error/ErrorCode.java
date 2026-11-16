@@ -32,7 +32,9 @@ public enum ErrorCode {
     MATCH_NOT_FOUND(HttpStatus.NOT_FOUND, "후보를 찾을 수 없어요"),
 
     // lost-pet
-    LOST_PET_NOT_FOUND(HttpStatus.NOT_FOUND, "실종 등록을 찾을 수 없어요");
+    LOST_PET_NOT_FOUND(HttpStatus.NOT_FOUND, "실종 등록을 찾을 수 없어요"),
+    MATCHING_NOT_REGISTERED(HttpStatus.CONFLICT, "매칭에 필요한 등록 정보가 아직 없어요"),
+    MATCHING_STOPPED(HttpStatus.CONFLICT, "찾음 처리된 등록은 비교를 중단했어요");
 
     private final HttpStatus status;
     private final String message;

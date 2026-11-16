@@ -18,6 +18,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.Objects;
 
 /**
  * 보호소 공고. 데이터는 BE-1(F-03 스케줄러)이 채우고, F-05 상세 조회는 읽기만 합니다.
@@ -98,6 +100,17 @@ public class Notice extends BaseTimeEntity {
     @Column(nullable = false, length = 20)
     private NoticeStatus status;
 
+    @Column(length = 20)
+    private String sidoCode;
+
+    @Column(length = 20)
+    private String sigunguCode;
+
+    @Column(length = 64)
+    private String sourceFingerprint;
+
+    private LocalDateTime collectedAt;
+
     @Builder
     private Notice(String desertionNo, String noticeNo, LocalDate noticeStartDate, LocalDate noticeEndDate,
                    LocalDate happenDate, String happenPlace, Species species, String breed, String color, Sex sex,
@@ -127,5 +140,39 @@ public class Notice extends BaseTimeEntity {
     /** BE-1 스케줄러가 상태 변경(입양·반환 등)을 반영할 때 사용 */
     public void changeStatus(NoticeStatus status) {
         this.status = status;
+    }
+
+    /** 수집 응답을 갱신한다. 같은 원문이면 매칭을 다시 요청하지 않는다. */
+    public boolean applyCollection(Notice source, String sidoCode, String sigunguCode,
+                                   String fingerprint, LocalDateTime collectedAt) {
+        if (!Objects.equals(desertionNo, source.desertionNo)) {
+            throw new IllegalArgumentException("Cannot change a notice source identifier");
+        }
+        this.collectedAt = collectedAt;
+        if (Objects.equals(sourceFingerprint, fingerprint)) {
+            return false;
+        }
+        this.noticeNo = source.noticeNo;
+        this.noticeStartDate = source.noticeStartDate;
+        this.noticeEndDate = source.noticeEndDate;
+        this.happenDate = source.happenDate;
+        this.happenPlace = source.happenPlace;
+        this.species = source.species;
+        this.breed = source.breed;
+        this.color = source.color;
+        this.sex = source.sex;
+        this.age = source.age;
+        this.weight = source.weight;
+        this.specialMark = source.specialMark;
+        this.careName = source.careName;
+        this.careTel = source.careTel;
+        this.careAddr = source.careAddr;
+        this.orgName = source.orgName;
+        this.imageUrl = source.imageUrl;
+        this.status = source.status;
+        this.sidoCode = sidoCode;
+        this.sigunguCode = sigunguCode;
+        this.sourceFingerprint = fingerprint;
+        return true;
     }
 }

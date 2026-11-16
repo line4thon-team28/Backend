@@ -5,6 +5,10 @@ spring:
     import: optional:file:.env[.properties]
   profiles:
     default: local
+  task:
+    scheduling:
+      pool:
+        size: 2
   jpa:
     open-in-view: false
     properties:
@@ -34,6 +38,16 @@ springdoc:
   swagger-ui:
     path: /swagger-ui.html
     operations-sorter: method
+
+pawpose:
+  collection:
+    enabled: ${PUBLIC_DATA_COLLECTION_ENABLED:false}
+    service-key: ${PUBLIC_DATA_SERVICE_KEY:}
+  matching:
+    enabled: ${MATCHING_WORKER_ENABLED:false}
+    embedding-url: ${EMBEDDING_URL:http://127.0.0.1:8091/embed}
+    embedding-key: ${EMBEDDING_API_KEY:}
+    image-hosts: ${MATCHING_IMAGE_HOSTS:www.animal.go.kr,openapi.animal.go.kr}
 
 ---
 spring:

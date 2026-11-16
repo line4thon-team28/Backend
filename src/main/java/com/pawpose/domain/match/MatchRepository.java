@@ -5,8 +5,26 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.time.LocalDate;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 public interface MatchRepository extends JpaRepository<Match, Long> {
+
+    List<Match> findByLostPetId(Long lostPetId);
+
+    String VISIBLE = " from Match m left join m.notice n where m.lostPet.id = :petId and m.eligible = true and m.feedback <> com.pawpose.domain.match.MatchFeedback.NO "
+            + "and (m.modelVersion is null or exists (select s.id from MatchingSource s where s.active = true and s.status = com.pawpose.domain.match.pipeline.ProcessingStatus.READY and s.modelVersion = m.modelVersion and ((s.kind = com.pawpose.domain.match.pipeline.SourceKind.NOTICE and s.sourceId = n.id) or (s.kind = com.pawpose.domain.match.pipeline.SourceKind.SIGHTING and s.sourceId = m.sightingId)))) "
+            + "and (m.type = com.pawpose.domain.match.MatchType.SIGHTING or (n.status = com.pawpose.domain.notice.NoticeStatus.NOTICE and (n.noticeEndDate is null or n.noticeEndDate >= :today))) ";
+    String PINNED = " order by case when m.feedback = com.pawpose.domain.match.MatchFeedback.YES then 0 else 1 end, ";
+
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = "notice")
+    @Query(value = "select m" + VISIBLE + PINNED + "m.similarity desc, m.id asc", countQuery = "select count(m)" + VISIBLE)
+    Page<Match> visibleBySimilarity(@Param("petId") Long petId, @Param("today") LocalDate today, Pageable pageable);
+
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = "notice")
+    @Query(value = "select m" + VISIBLE + PINNED + "case when n.noticeEndDate is null then 1 else 0 end, n.noticeEndDate asc, m.similarity desc, m.id asc", countQuery = "select count(m)" + VISIBLE)
+    Page<Match> visibleByDeadline(@Param("petId") Long petId, @Param("today") LocalDate today, Pageable pageable);
 
     /**
      * BE-2(F-04 후보 목록)에서 쓰라고 만들어 둔 조회.
