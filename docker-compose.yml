@@ -1,0 +1,57 @@
+name: pawpose
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: pawpose
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      TZ: Asia/Seoul
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d pawpose"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_URL: jdbc:postgresql://db:5432/pawpose
+      EMBEDDING_URL: http://embedding:8091/embed
+    depends_on:
+      db:
+        condition: service_healthy
+    expose:
+      - "8080"
+
+  # 매칭(F-04) 브랜치가 main에 머지된 뒤에만 켭니다:
+  #   docker compose --profile matching up -d --build
+  embedding:
+    profiles: ["matching"]
+    build: ./embedding-service
+    restart: unless-stopped
+    environment:
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY}
+      EMBEDDING_CPU_THREADS: 2
+    expose:
+      - "8091"
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:

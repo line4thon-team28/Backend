@@ -1,0 +1,14 @@
+.git
+.github
+.gradle
+.idea
+.vscode
+build
+out
+uploads
+.env
+*.env
+embedding-service
+deploy
+docs
+*.md
