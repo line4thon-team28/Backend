@@ -4,11 +4,12 @@
 
 ```
 EC2 (m7i-flex.large, Ubuntu 24.04)
- ├─ nginx      :80   외부 공개 → backend로 전달
+ ├─ nginx      :80/443 외부 공개 (80은 https로 전환) → backend로 전달
  ├─ backend    :8080 (내부)  Spring Boot, prod 프로필
  ├─ embedding  :8091 (내부)  SigLIP CPU 임베딩, 매칭 머지 후에만 켬
  └─ db         :5432 (내부)  PostgreSQL 16, 볼륨 pgdata
 S3: pawpose-team28-s3-images  (EC2 역할로 접근, 키 불필요)
+도메인: https://api.findpawpose.site  → 16.178.50.143 (가비아 A 레코드)
 ```
 
 ## 파일
@@ -19,7 +20,7 @@ S3: pawpose-team28-s3-images  (EC2 역할로 접근, 키 불필요)
 | `.dockerignore` | 빌드에 불필요한 파일 제외 |
 | `embedding-service/Dockerfile` | Python 3.12 + CPU torch, 모델을 이미지에 미리 받음 |
 | `docker-compose.yml` | db, backend, embedding, nginx |
-| `deploy/nginx.conf` | 80 → backend:8080, 업로드 50MB |
+| `deploy/nginx.conf` | 80 → https 전환, 443(SSL) → backend:8080, 업로드 50MB |
 | `deploy/env.server.example` | 서버 `.env` 템플릿 |
 
 ## 처음 배포
@@ -47,7 +48,42 @@ docker compose ps
 docker compose logs -f backend    # "Started PawposeApplication" 나오면 성공
 ```
 
-브라우저: `http://<탄력적IP>/swagger-ui.html`
+브라우저: `https://api.findpawpose.site/swagger-ui.html`
+
+인증서가 아직 없으면 nginx가 시작되지 않습니다. 아래 "HTTPS 인증서" 를 먼저 진행하세요.
+
+## HTTPS 인증서 (Let's Encrypt)
+
+인증서와 개인키는 서버의 `/etc/letsencrypt` 에만 있고 Git에는 올리지 않습니다.
+
+### 처음 발급 (1회)
+
+```bash
+# 가비아 DNS: A 레코드 api → 16.178.50.143 이 먼저 연결돼 있어야 함
+dig +short api.findpawpose.site    # 16.178.50.143 확인
+
+sudo mkdir -p /var/www/certbot
+cd ~/Backend
+docker compose stop nginx           # 80번 포트를 잠깐 비움
+
+sudo docker run --rm -p 80:80 \
+  -v /etc/letsencrypt:/etc/letsencrypt \
+  certbot/certbot certonly --standalone \
+  -d api.findpawpose.site \
+  -m <이메일> --agree-tos -n
+
+docker compose up -d nginx
+```
+
+### 갱신 (90일마다, 무중단)
+
+```bash
+sudo docker run --rm \
+  -v /etc/letsencrypt:/etc/letsencrypt \
+  -v /var/www/certbot:/var/www/certbot \
+  certbot/certbot renew --webroot -w /var/www/certbot
+docker compose exec nginx nginx -s reload
+```
 
 ## 코드 업데이트 (main에 머지된 뒤)
 
@@ -95,6 +131,7 @@ docker compose exec -T db psql -U pawpose pawpose < backup_XXXX.sql
 
 - prod 프로필에서는 `LocalDataInitializer`(데모 계정·샘플 공고)가 실행되지 않습니다. 서버 DB는 처음에 비어 있습니다.
 - 카카오 Redirect URI는 FE 주소입니다. FE를 배포하면 카카오 디벨로퍼스, FE, 서버 `.env`의 `KAKAO_REDIRECT_URI` 세 곳을 같은 값으로 바꾸고, `CORS_ALLOWED_ORIGINS` 에도 FE 주소를 추가합니다.
+- `http://16.178.50.143` 으로 접속하면 `https://api.findpawpose.site` 로 자동 이동합니다. IP로 https 접속은 인증서가 맞지 않아 경고가 뜹니다.
 - 보안 그룹(`pawpose-sg`): 22·80·443 전체 허용, 8080은 닫힘. SSH는 `.pem` 키로만 로그인되므로 키가 새지 않게 관리하고, 제출 후에는 22를 관리자 IP로 좁힙니다.
 - 서버에 배포 파일을 `scp`로 먼저 복사해 둔 경우, 이 파일들이 main에 머지된 뒤 처음 `git pull` 하기 전에 복사본을 지워야 합니다.
   ```bash
