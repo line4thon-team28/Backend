@@ -2,7 +2,7 @@
 # 서버(EC2)에서 실행: 최신 코드·이미지를 받아 컨테이너를 교체합니다.
 # GitHub Actions 가 호출하며, 수동으로도 실행할 수 있습니다:
 #   bash ~/Backend/deploy/deploy.sh            # latest 태그
-#   bash ~/Backend/deploy/deploy.sh <커밋SHA>   # 특정 버전으로 (되돌리기)
+#   bash ~/Backend/deploy/deploy.sh <커밋SHA>   # 백엔드를 특정 버전으로 (되돌리기)
 set -euo pipefail
 
 TAG="${1:-latest}"
@@ -12,7 +12,8 @@ echo "==> 코드 업데이트 (compose, nginx 설정 등)"
 git pull --ff-only origin main
 
 export BACKEND_TAG="$TAG"
-export EMBEDDING_TAG="$TAG"
+# 임베딩 이미지는 embedding-service 가 바뀔 때만 새로 빌드되므로 항상 latest 사용
+export EMBEDDING_TAG="latest"
 
 # 매칭 코드가 있고 .env 에서 켜져 있을 때만 임베딩 컨테이너 포함
 PROFILE_ARGS=()

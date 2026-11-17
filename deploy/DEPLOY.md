@@ -91,13 +91,14 @@ main 에 머지되면 `.github/workflows/deploy.yml` 이 실행됩니다.
 
 ```
 main 머지
-  → GitHub Actions: 이미지 빌드
+  → GitHub Actions: 테스트 (실패하면 배포 중단, 서버는 이전 버전 유지)
+  → 이미지 빌드
   → Docker Hub push  (<계정>/pawpose-backend:latest, :<커밋SHA>)
   → EC2 SSH 접속 → deploy/deploy.sh
        git pull → docker compose pull → up -d → 오래된 이미지 정리
 ```
 
-- 임베딩 이미지(`pawpose-embedding`)는 `embedding-service/server.py` 가 main 에 있을 때만 빌드됩니다.
+- 임베딩 이미지(`pawpose-embedding`)는 `embedding-service` 가 바뀌었거나 Docker Hub 에 이미지가 없을 때만 빌드됩니다. 서버는 항상 `latest` 를 받습니다.
 - 진행 상황: GitHub 레포 **Actions** 탭. 수동 실행은 **Deploy → Run workflow**.
 
 ### GitHub Secrets (Settings → Secrets and variables → Actions)
@@ -112,7 +113,7 @@ main 머지
 
 서버 `.env` 에도 `DOCKERHUB_USERNAME` 을 같은 값으로 넣어야 합니다.
 
-### 되돌리기 (이전 버전으로)
+### 되돌리기 (백엔드를 이전 버전으로)
 
 ```bash
 bash ~/Backend/deploy/deploy.sh <이전 커밋 SHA>
