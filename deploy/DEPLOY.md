@@ -85,7 +85,40 @@ sudo docker run --rm \
 docker compose exec nginx nginx -s reload
 ```
 
-## 코드 업데이트 (main에 머지된 뒤)
+## 자동 배포 (GitHub Actions + Docker Hub)
+
+main 에 머지되면 `.github/workflows/deploy.yml` 이 실행됩니다.
+
+```
+main 머지
+  → GitHub Actions: 이미지 빌드
+  → Docker Hub push  (<계정>/pawpose-backend:latest, :<커밋SHA>)
+  → EC2 SSH 접속 → deploy/deploy.sh
+       git pull → docker compose pull → up -d → 오래된 이미지 정리
+```
+
+- 임베딩 이미지(`pawpose-embedding`)는 `embedding-service/server.py` 가 main 에 있을 때만 빌드됩니다.
+- 진행 상황: GitHub 레포 **Actions** 탭. 수동 실행은 **Deploy → Run workflow**.
+
+### GitHub Secrets (Settings → Secrets and variables → Actions)
+
+| 이름 | 값 |
+|---|---|
+| `DOCKERHUB_USERNAME` | Docker Hub 계정 이름 |
+| `DOCKERHUB_TOKEN` | Docker Hub Access Token (Read & Write) |
+| `EC2_HOST` | `api.findpawpose.site` |
+| `EC2_USER` | `ubuntu` |
+| `EC2_SSH_KEY` | `pawpose-key.pem` 파일 내용 전체 |
+
+서버 `.env` 에도 `DOCKERHUB_USERNAME` 을 같은 값으로 넣어야 합니다.
+
+### 되돌리기 (이전 버전으로)
+
+```bash
+bash ~/Backend/deploy/deploy.sh <이전 커밋 SHA>
+```
+
+## 코드 업데이트 (수동, 자동 배포가 안 될 때)
 
 ```bash
 cd ~/Backend
@@ -93,17 +126,16 @@ git pull
 docker compose up -d --build
 ```
 
-## 매칭(F-04) 켜기 — `feat/f03-f04-matching` 이 main에 머지된 뒤
+## 매칭(F-04) 켜기 (매칭 코드는 main 에 머지됨)
 
 ```bash
-# .env 에서 MATCHING_WORKER_ENABLED=true, EMBEDDING_API_KEY 확인
-git pull
-docker compose --profile matching up -d --build
-docker compose logs -f embedding   # 모델 로드에 20~60초
+# .env 에서 MATCHING_WORKER_ENABLED=true, EMBEDDING_API_KEY 확인 후
+bash ~/Backend/deploy/deploy.sh          # embedding 이미지까지 받아서 같이 띄움
+docker compose logs -f embedding         # 모델 로드에 20~60초
 ```
 
-임베딩 이미지 첫 빌드는 torch + 모델(약 800MB) 때문에 5~10분 걸립니다.
-이후 업데이트 때도 `--profile matching` 을 붙여야 embedding이 같이 유지됩니다.
+`deploy.sh` 는 `MATCHING_WORKER_ENABLED=true` 일 때 자동으로 `--profile matching` 을 붙입니다.
+직접 `docker compose` 명령을 쓸 때는 `--profile matching` 을 붙여야 embedding 이 유지됩니다.
 
 ## 자주 쓰는 명령
 
