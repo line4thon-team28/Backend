@@ -95,4 +95,9 @@ docker compose exec -T db psql -U pawpose pawpose < backup_XXXX.sql
 
 - prod 프로필에서는 `LocalDataInitializer`(데모 계정·샘플 공고)가 실행되지 않습니다. 서버 DB는 처음에 비어 있습니다.
 - 카카오 Redirect URI는 FE 주소입니다. FE를 배포하면 카카오 디벨로퍼스, FE, 서버 `.env`의 `KAKAO_REDIRECT_URI` 세 곳을 같은 값으로 바꾸고, `CORS_ALLOWED_ORIGINS` 에도 FE 주소를 추가합니다.
-- 보안 그룹: 22(SSH)는 내 IP만, 80은 전체. 8080은 nginx가 대신하므로 닫아도 됩니다.
+- 보안 그룹(`pawpose-sg`): 22·80·443 전체 허용, 8080은 닫힘. SSH는 `.pem` 키로만 로그인되므로 키가 새지 않게 관리하고, 제출 후에는 22를 관리자 IP로 좁힙니다.
+- 서버에 배포 파일을 `scp`로 먼저 복사해 둔 경우, 이 파일들이 main에 머지된 뒤 처음 `git pull` 하기 전에 복사본을 지워야 합니다.
+  ```bash
+  rm -rf Dockerfile .dockerignore docker-compose.yml deploy embedding-service
+  git pull && docker compose up -d --build
+  ```
