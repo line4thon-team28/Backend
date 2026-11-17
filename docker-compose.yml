@@ -18,6 +18,8 @@ services:
       retries: 20
 
   backend:
+    # 서버는 Docker Hub 이미지를 받아서 실행 (deploy/deploy.sh). 로컬은 --build 로 직접 빌드 가능
+    image: ${DOCKERHUB_USERNAME:-local}/pawpose-backend:${BACKEND_TAG:-latest}
     build: .
     restart: unless-stopped
     env_file: .env
@@ -34,9 +36,10 @@ services:
       - "8080"
 
   # 매칭(F-04) 브랜치가 main에 머지된 뒤에만 켭니다:
-  #   docker compose --profile matching up -d --build
+  #   .env 에서 MATCHING_WORKER_ENABLED=true 로 바꾸면 deploy.sh 가 같이 띄움
   embedding:
     profiles: ["matching"]
+    image: ${DOCKERHUB_USERNAME:-local}/pawpose-embedding:${EMBEDDING_TAG:-latest}
     build: ./embedding-service
     restart: unless-stopped
     environment:
