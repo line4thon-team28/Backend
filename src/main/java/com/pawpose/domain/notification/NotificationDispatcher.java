@@ -28,7 +28,7 @@ public class NotificationDispatcher {
             int created = notificationService.deliverPending();
             if (created > 0) log.info("Created {} candidate notifications", created);
         } catch (Exception e) {
-            // 실패한 묶음은 트랜잭션이 롤백되어 다음 주기에 다시 처리됩니다
+            // outbox 조회 자체가 실패한 경우. 건별 실패는 NotificationService 에서 처리
             log.warn("Candidate notification delivery failed; will retry next poll", e);
         }
     }

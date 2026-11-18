@@ -4,6 +4,7 @@ import com.pawpose.domain.common.Species;
 import com.pawpose.domain.lostpet.LostPet;
 import com.pawpose.domain.lostpet.LostPetRepository;
 import com.pawpose.domain.match.Match;
+import com.pawpose.domain.match.MatchFeedback;
 import com.pawpose.domain.match.MatchRepository;
 import com.pawpose.domain.match.pipeline.CandidateNotification;
 import com.pawpose.domain.match.pipeline.CandidateNotificationRepository;
@@ -15,12 +16,15 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.reset;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -34,7 +38,7 @@ class NotificationTest {
     @Autowired NotificationService service;
     @Autowired NotificationRepository notifications;
     @Autowired CandidateNotificationRepository outbox;
-    @Autowired MatchRepository matches;
+    @MockitoSpyBean MatchRepository matches;
     @Autowired LostPetRepository pets;
     @Autowired UserRepository users;
     @Autowired JwtProvider jwt;
@@ -58,6 +62,11 @@ class NotificationTest {
 
     private List<Notification> mine() {
         return notifications.findAll().stream().filter(n -> n.isOwnedBy(owner.getId())).toList();
+    }
+
+    private boolean delivered(Match match) {
+        return outbox.findAll().stream().filter(r -> r.getMatchId().equals(match.getId()))
+                .allMatch(CandidateNotification::isDelivered);
     }
 
     private String token(User user) {
@@ -92,6 +101,38 @@ class NotificationTest {
         assertThat(mine()).isEmpty();
         assertThat(outbox.findAll()).filteredOn(r -> r.getMatchId().equals(match.getId()))
                 .allMatch(CandidateNotification::isDelivered);
+    }
+
+    @Test
+    void 아니에요로_숨긴_후보는_알림을_만들지_않는다() {
+        Match match = newCandidate(85);
+        match.applyFeedback(MatchFeedback.NO);
+        matches.save(match);
+
+        service.deliverPending();
+
+        assertThat(mine()).isEmpty();
+        assertThat(delivered(match)).isTrue();
+    }
+
+    @Test
+    void 한_건이_실패해도_나머지는_알림이_생기고_실패한_건은_다음에_다시_시도한다() {
+        Match broken = newCandidate(70);
+        Match ok = newCandidate(80);
+        doThrow(new RuntimeException("boom")).when(matches).findById(broken.getId());
+
+        service.deliverPending();
+
+        assertThat(mine()).extracting(Notification::getMatchId).containsExactly(ok.getId());
+        assertThat(delivered(broken)).isFalse();
+        assertThat(delivered(ok)).isTrue();
+
+        reset(matches);
+        service.deliverPending();
+
+        assertThat(mine()).extracting(Notification::getMatchId)
+                .containsExactlyInAnyOrder(broken.getId(), ok.getId());
+        assertThat(delivered(broken)).isTrue();
     }
 
     @Test

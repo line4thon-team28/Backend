@@ -19,6 +19,7 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
     boolean existsByMatchId(Long matchId);
 
     @Modifying(clearAutomatically = true)
-    @Query("update Notification n set n.read = true, n.readAt = :now where n.userId = :userId and n.read = false")
+    /** 한 번에 업데이트하므로 JPA 자동 시간 갱신이 안 됨 → updatedAt 도 직접 갱신 */
+    @Query("update Notification n set n.read = true, n.readAt = :now, n.updatedAt = :now where n.userId = :userId and n.read = false")
     int markAllRead(@Param("userId") Long userId, @Param("now") LocalDateTime now);
 }
