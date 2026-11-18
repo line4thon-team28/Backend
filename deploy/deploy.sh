@@ -27,6 +27,9 @@ docker compose "${PROFILE_ARGS[@]}" pull backend $([ ${#PROFILE_ARGS[@]} -gt 0 ]
 echo "==> 컨테이너 교체"
 docker compose "${PROFILE_ARGS[@]}" up -d --no-build
 
+echo "==> nginx 설정 다시 읽기 (바뀐 컨테이너 주소 반영)"
+docker compose exec -T nginx nginx -s reload || docker compose restart nginx
+
 echo "==> 오래된 이미지 정리"
 docker image prune -f
 
