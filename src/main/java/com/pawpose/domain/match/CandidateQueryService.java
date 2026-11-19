@@ -4,6 +4,8 @@ import com.pawpose.domain.lostpet.*;
 import com.pawpose.domain.match.dto.CandidatePageResponse;
 import com.pawpose.domain.match.dto.CandidatePageResponse.Candidate;
 import com.pawpose.domain.match.pipeline.*;
+import com.pawpose.domain.sighting.Sighting;
+import com.pawpose.domain.sighting.SightingRepository;
 import com.pawpose.global.error.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +23,7 @@ public class CandidateQueryService {
     private final LostPetRepository pets;
     private final MatchRepository matches;
     private final MatchingSourceRepository sources;
+    private final SightingRepository sightingReports;
     private final ObjectMapper mapper;
 
     @Transactional(readOnly = true)
@@ -55,10 +58,13 @@ public class CandidateQueryService {
         long offset = (long) page * size;
         List<Match> window = offset >= candidates.getNumberOfElements() ? List.of()
                 : candidates.getContent().subList((int) offset, (int) Math.min(offset + size, candidates.getNumberOfElements()));
-        Map<Long, MatchingSource> sightings = sources.findByKindAndSourceIdIn(SourceKind.SIGHTING,
-                window.stream().filter(m -> m.getType() == MatchType.SIGHTING).map(Match::getSightingId).toList())
+        List<Long> sightingIds = window.stream().filter(m -> m.getType() == MatchType.SIGHTING).map(Match::getSightingId).toList();
+        Map<Long, MatchingSource> sightings = sources.findByKindAndSourceIdIn(SourceKind.SIGHTING, sightingIds)
                 .stream().collect(Collectors.toMap(MatchingSource::getSourceId, Function.identity()));
-        List<Candidate> items = window.stream().map(m -> card(m, sightings.get(m.getSightingId()), today)).toList();
+        Map<Long, Sighting> reports = sightingReports.findAllById(sightingIds).stream()
+                .collect(Collectors.toMap(Sighting::getId, Function.identity()));
+        List<Candidate> items = window.stream().map(m -> card(m, sightings.get(m.getSightingId()),
+                reports.get(m.getSightingId()), today)).toList();
         String message = switch (state) {
             case PENDING, PROCESSING -> "사진 분석 중이에요";
             case FAILED -> "사진 분석에 실패했어요. 잠시 후 다시 비교할게요";
@@ -71,7 +77,7 @@ public class CandidateQueryService {
                 failureCode, state == ProcessingStatus.PENDING || state == ProcessingStatus.PROCESSING ? 10 : null, false, pendingTargets, failedTargets);
     }
 
-    private Candidate card(Match m, MatchingSource sighting, LocalDate today) {
+    private Candidate card(Match m, MatchingSource sighting, Sighting report, LocalDate today) {
         var n = m.getNotice();
         LocalDate deadline = n == null ? null : n.getNoticeEndDate();
         Long days = deadline == null ? null : Math.max(0, ChronoUnit.DAYS.between(today, deadline));
@@ -80,7 +86,7 @@ public class CandidateQueryService {
                 Math.round(m.getSimilarity() * 10) / 10.0, n == null ? null : n.getCareName(),
                 n != null ? n.getHappenPlace() : sighting == null ? null : sighting.getPlace(),
                 n != null ? n.getHappenDate() : sighting == null ? null : sighting.getOccurredOn(), deadline, days,
-                days != null && days <= 3, m.getFeedback());
+                days != null && days <= 3, m.getFeedback(), report == null ? null : report.getMemo());
     }
     private String firstImage(MatchingSource source) {
         if (source == null) return null;
