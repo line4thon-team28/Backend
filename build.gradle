@@ -7,6 +7,8 @@ plugins {
 group = 'com.pawpose'
 version = '0.0.1-SNAPSHOT'
 
+ext['commons-lang3.version'] = '3.18.0'
+
 java {
     // JDK 17 이상이면 빌드됨 (17 또는 21 설치 권장)
     sourceCompatibility = JavaVersion.VERSION_17
