@@ -8,6 +8,9 @@ import com.pawpose.domain.match.MatchFeedback;
 import com.pawpose.domain.match.MatchRepository;
 import com.pawpose.domain.match.pipeline.CandidateNotification;
 import com.pawpose.domain.match.pipeline.CandidateNotificationRepository;
+import com.pawpose.domain.notice.Notice;
+import com.pawpose.domain.notice.NoticeRepository;
+import com.pawpose.domain.notice.NoticeStatus;
 import com.pawpose.domain.user.User;
 import com.pawpose.domain.user.UserRepository;
 import com.pawpose.global.security.JwtProvider;
@@ -19,6 +22,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
 
@@ -40,6 +45,7 @@ class NotificationTest {
     @Autowired CandidateNotificationRepository outbox;
     @MockitoSpyBean MatchRepository matches;
     @Autowired LostPetRepository pets;
+    @Autowired NoticeRepository notices;
     @Autowired UserRepository users;
     @Autowired JwtProvider jwt;
     @Autowired MockMvc mvc;
@@ -56,6 +62,17 @@ class NotificationTest {
     /** 매칭(F-04)이 새 후보를 만들 때와 같은 상태: match 저장 + outbox 한 줄 */
     private Match newCandidate(double similarity) {
         Match match = matches.save(Match.ofSighting(pet, System.nanoTime(), similarity));
+        outbox.save(CandidateNotification.create(match.getId(), owner.getId(), pet.getId()));
+        return match;
+    }
+
+    /** 공고 후보: match + outbox */
+    private Match noticeCandidate(LocalDate endDate, NoticeStatus status) {
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
+        Notice notice = notices.save(Notice.builder().desertionNo(UUID.randomUUID().toString().substring(0, 25))
+                .species(Species.DOG).noticeStartDate(today.minusDays(3)).noticeEndDate(endDate).happenDate(today.minusDays(3))
+                .imageUrl("https://www.animal.go.kr/test.png").orgName("서울특별시 강북구").status(status).build());
+        Match match = matches.save(Match.ofNotice(pet, notice, 80));
         outbox.save(CandidateNotification.create(match.getId(), owner.getId(), pet.getId()));
         return match;
     }
@@ -113,6 +130,20 @@ class NotificationTest {
 
         assertThat(mine()).isEmpty();
         assertThat(delivered(match)).isTrue();
+    }
+
+    @Test
+    void 마감됐거나_종료된_공고_후보는_알림을_만들지_않는다() {
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
+        Match open = noticeCandidate(today.plusDays(3), NoticeStatus.NOTICE);
+        Match expired = noticeCandidate(today.minusDays(1), NoticeStatus.NOTICE);
+        Match adopted = noticeCandidate(today.plusDays(3), NoticeStatus.ADOPTED);
+
+        service.deliverPending();
+
+        assertThat(mine()).extracting(Notification::getMatchId).containsExactly(open.getId());
+        assertThat(delivered(expired)).isTrue();
+        assertThat(delivered(adopted)).isTrue();
     }
 
     @Test
