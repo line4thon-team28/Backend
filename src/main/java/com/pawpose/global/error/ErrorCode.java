@@ -32,6 +32,13 @@ public enum ErrorCode {
     MATCH_NOT_FOUND(HttpStatus.NOT_FOUND, "후보를 찾을 수 없어요"),
 
     // lost-pet
+    INVALID_PHOTO_COUNT(HttpStatus.BAD_REQUEST, "실종 사진은 1~5장, 목격 사진은 1~3장을 올려주세요"),
+    INVALID_IMAGE(HttpStatus.BAD_REQUEST, "정상적인 JPEG 또는 PNG 사진을 올려주세요"),
+    UNSUPPORTED_IMAGE(HttpStatus.BAD_REQUEST, "JPEG와 PNG 형식만 지원해요"),
+    FILE_TOO_LARGE(HttpStatus.BAD_REQUEST, "사진은 장당 10MB, 요청 전체는 50MB 이하여야 해요"),
+    PHOTO_UPLOAD_FAILED(HttpStatus.SERVICE_UNAVAILABLE, "사진 저장에 실패했어요. 잠시 후 다시 시도해주세요"),
+    REFERENCE_DATA_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "지역 정보를 가져오지 못했어요. 잠시 후 다시 시도해주세요"),
+    SIGHTING_NOT_FOUND(HttpStatus.NOT_FOUND, "목격 제보를 찾을 수 없어요"),
     LOST_PET_NOT_FOUND(HttpStatus.NOT_FOUND, "실종 등록을 찾을 수 없어요"),
     MATCHING_NOT_REGISTERED(HttpStatus.CONFLICT, "매칭에 필요한 등록 정보가 아직 없어요"),
     MATCHING_STOPPED(HttpStatus.CONFLICT, "찾음 처리된 등록은 비교를 중단했어요");

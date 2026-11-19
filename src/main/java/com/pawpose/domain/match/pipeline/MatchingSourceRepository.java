@@ -10,6 +10,12 @@ import java.util.List;
 import java.util.Optional;
 
 public interface MatchingSourceRepository extends JpaRepository<MatchingSource, Long> {
+    @Query("select count(s) from MatchingSource s where s.kind = com.pawpose.domain.match.pipeline.SourceKind.LOST_PET "
+            + "and s.active = true and s.species = :species and s.occurredOn <= :date "
+            + "and s.sidoCode in :regions and s.status in :statuses")
+    long unfinishedLostPets(@Param("species") Species species, @Param("date") java.time.LocalDate date,
+                            @Param("regions") java.util.Set<String> regions,
+                            @Param("statuses") List<ProcessingStatus> statuses);
     Optional<MatchingSource> findByKindAndSourceId(SourceKind kind, Long sourceId);
     @Query("select s.id from MatchingSource s where s.kind = :kind and s.sourceId = :sourceId")
     Optional<Long> findSourceId(@Param("kind") SourceKind kind, @Param("sourceId") Long sourceId);

@@ -28,3 +28,4 @@ Thumbs.db
 
 ### 업로드 파일(로컬 디스크 저장 시) ###
 uploads/
+data/uploads/
