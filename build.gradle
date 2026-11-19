@@ -7,6 +7,8 @@ plugins {
 group = 'com.pawpose'
 version = '0.0.1-SNAPSHOT'
 
+ext['commons-lang3.version'] = '3.18.0'
+
 java {
     // JDK 17 이상이면 빌드됨 (17 또는 21 설치 권장)
     sourceCompatibility = JavaVersion.VERSION_17
@@ -24,6 +26,13 @@ repositories {
 }
 
 dependencies {
+    implementation platform('software.amazon.awssdk:bom:2.55.11')
+    implementation('software.amazon.awssdk:s3') {
+        exclude group: 'software.amazon.awssdk', module: 'apache-client'
+        exclude group: 'software.amazon.awssdk', module: 'apache5-client'
+        exclude group: 'software.amazon.awssdk', module: 'netty-nio-client'
+    }
+    implementation 'software.amazon.awssdk:url-connection-client'
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-security'

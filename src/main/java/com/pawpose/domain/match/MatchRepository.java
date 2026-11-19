@@ -18,6 +18,15 @@ public interface MatchRepository extends JpaRepository<Match, Long> {
             + "and (m.type = com.pawpose.domain.match.MatchType.SIGHTING or (n.status = com.pawpose.domain.notice.NoticeStatus.NOTICE and (n.noticeEndDate is null or n.noticeEndDate >= :today))) ";
     String PINNED = " order by case when m.feedback = com.pawpose.domain.match.MatchFeedback.YES then 0 else 1 end, ";
 
+    @Query("select count(m)" + VISIBLE)
+    long countVisible(@Param("petId") Long petId, @Param("today") LocalDate today);
+
+    @Query("select count(m) from Match m where m.sightingId = :sightingId and m.eligible = true "
+            + "and m.feedback <> com.pawpose.domain.match.MatchFeedback.NO "
+            + "and m.lostPet.status = com.pawpose.domain.lostpet.LostPetStatus.SEARCHING "
+            + "and m.modelVersion = :version")
+    long countVisibleSightingMatches(@Param("sightingId") Long sightingId, @Param("version") String version);
+
     @org.springframework.data.jpa.repository.EntityGraph(attributePaths = "notice")
     @Query(value = "select m" + VISIBLE + PINNED + "m.similarity desc, m.id asc", countQuery = "select count(m)" + VISIBLE)
     Page<Match> visibleBySimilarity(@Param("petId") Long petId, @Param("today") LocalDate today, Pageable pageable);

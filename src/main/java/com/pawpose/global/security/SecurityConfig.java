@@ -44,6 +44,7 @@ public class SecurityConfig {
                                 "/api/v1/auth/signup", "/api/v1/auth/login", "/api/v1/auth/kakao").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/notices/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/sightings").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/sightings/*", "/uploads/**").permitAll()
                         // 등록 폼에서 쓰는 코드 목록 (BE-3 API, 비로그인 허용)
                         .requestMatchers(HttpMethod.GET, "/api/v1/breeds", "/api/v1/regions").permitAll()
                         // 개발 도구
