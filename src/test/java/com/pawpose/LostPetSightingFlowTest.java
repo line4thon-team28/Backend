@@ -210,6 +210,7 @@ class LostPetSightingFlowTest {
         worker.process(lostSource);
         var sightResult=mvc.perform(sightingForm().file(photo()).with(r->{
                 r.setParameter("species","DOG"); r.setParameter("sido","6500000"); r.setParameter("sigungu","제주시");
+                r.setParameter("memo","공원 입구에서 빨간 목줄을 하고 있었어요.");
                 return r;
             })).andExpect(status().isCreated()).andReturn();
         long sightId=mapper.readTree(sightResult.getResponse().getContentAsString()).at("/data/sightingId").asLong();
@@ -221,10 +222,43 @@ class LostPetSightingFlowTest {
         mvc.perform(get("/api/v1/sightings/"+sightId)).andExpect(status().isOk())
             .andExpect(jsonPath("$.data.processingStatus").value("READY"))
             .andExpect(jsonPath("$.data.matchedCount").value(1));
+        mvc.perform(get("/api/v1/lost-pets/"+petId+"/matches").header("Authorization","Bearer "+token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.items[?(@.sightingId == "+sightId+")].memo")
+                .value(org.hamcrest.Matchers.contains("공원 입구에서 빨간 목줄을 하고 있었어요.")));
         mvc.perform(patch("/api/v1/lost-pets/"+petId).header("Authorization","Bearer "+token)
             .contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"FOUND\"}")).andExpect(status().isOk());
         mvc.perform(get("/api/v1/sightings/"+sightId)).andExpect(status().isOk())
             .andExpect(jsonPath("$.data.matchedCount").value(0));
+    }
+
+    @Test void candidateMemoBelongsToItsSightingAndIsNullForMissingMemoOrNotice() throws Exception {
+        String token=signup(); long petId=create(token);
+        LostPet pet=pets.findById(petId).orElseThrow();
+        List<Long> sightIds=new ArrayList<>();
+        for(String memo:List.of("나무 아래에서 쉬고 있었어요.","")) {
+            var form=sightingForm().file(photo());
+            if(!memo.isEmpty()) form.param("memo",memo);
+            var response=mvc.perform(form).andExpect(status().isCreated()).andReturn();
+            sightIds.add(mapper.readTree(response.getResponse().getContentAsString()).at("/data/sightingId").asLong());
+        }
+        matches.save(Match.ofSighting(pet,sightIds.get(0),80));
+        matches.save(Match.ofSighting(pet,sightIds.get(1),90));
+        Notice notice=notices.save(Notice.builder().desertionNo(UUID.randomUUID().toString().substring(0,20))
+            .species(Species.CAT).status(NoticeStatus.NOTICE).noticeEndDate(today().plusDays(2)).build());
+        matches.save(Match.ofNotice(pet,notice,95));
+        var response=mvc.perform(get("/api/v1/lost-pets/"+petId+"/matches")
+            .header("Authorization","Bearer "+token)).andExpect(status().isOk()).andReturn();
+        JsonNode items=mapper.readTree(response.getResponse().getContentAsString()).at("/data/items");
+        assertThat(items.size()).isEqualTo(3);
+        assertThat(items.get(0).path("type").asText()).isEqualTo("NOTICE");
+        assertThat(items.get(0).has("memo")).isTrue();
+        assertThat(items.get(0).path("memo").isNull()).isTrue();
+        assertThat(items.get(1).path("sightingId").asLong()).isEqualTo(sightIds.get(1));
+        assertThat(items.get(1).has("memo")).isTrue();
+        assertThat(items.get(1).path("memo").isNull()).isTrue();
+        assertThat(items.get(2).path("sightingId").asLong()).isEqualTo(sightIds.get(0));
+        assertThat(items.get(2).path("memo").asText()).isEqualTo("나무 아래에서 쉬고 있었어요.");
     }
 
     @Test void oversizedPhotoReturnsSpecific400WithoutCallingStorage() throws Exception {
