@@ -45,7 +45,7 @@ public class LocalEmbeddingClient implements EmbeddingClient {
     }
 
     byte[] download(String imageUrl) throws Exception {
-        URI uri = URI.create(imageUrl);
+        URI uri = imageUri(imageUrl);
         String host = uri.getHost();
         if (host == null || uri.getUserInfo() != null || uri.getFragment() != null
                 || !("https".equals(uri.getScheme()) || "http".equals(uri.getScheme()))
@@ -73,6 +73,21 @@ public class LocalEmbeddingClient implements EmbeddingClient {
                 return bytes;
             }
         } finally { connection.disconnect(); }
+    }
+
+    static URI imageUri(String imageUrl) {
+        // Some official photo filenames contain raw brackets. Preserve authority and signed queries.
+        int schemeEnd = imageUrl.indexOf("://");
+        if (schemeEnd < 0) return URI.create(imageUrl);
+        int pathStart = imageUrl.indexOf('/', schemeEnd + 3);
+        int pathEnd = imageUrl.length();
+        for (char delimiter : new char[]{'?', '#'}) {
+            int index = imageUrl.indexOf(delimiter, schemeEnd + 3);
+            if (index >= 0) pathEnd = Math.min(pathEnd, index);
+        }
+        if (pathStart < 0 || pathStart >= pathEnd) return URI.create(imageUrl);
+        String path = imageUrl.substring(pathStart, pathEnd).replace("[", "%5B").replace("]", "%5D");
+        return URI.create(imageUrl.substring(0, pathStart) + path + imageUrl.substring(pathEnd));
     }
 
     record VectorResponse(String modelVersion, int dimensions, double[] vector) {}
