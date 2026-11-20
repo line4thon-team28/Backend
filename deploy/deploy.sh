@@ -8,6 +8,16 @@ set -euo pipefail
 TAG="${1:-latest}"
 cd "$HOME/Backend"
 
+# 배포한 태그를 .env 에 저장 → 태그 없이 docker compose up 해도 마지막 배포 버전으로 뜸
+# (새 배포 때는 아래 export BACKEND_TAG 가 .env 보다 우선이라 그대로 새 태그로 배포됨)
+if grep -q '^BACKEND_TAG=' .env; then
+  sed -i "s/^BACKEND_TAG=.*/BACKEND_TAG=$TAG/" .env
+else
+  # 마지막 줄에 줄바꿈이 없으면 앞 줄에 붙어버리므로 먼저 줄바꿈 추가
+  [ -n "$(tail -c1 .env)" ] && echo >> .env
+  echo "BACKEND_TAG=$TAG" >> .env
+fi
+
 echo "==> 코드 업데이트 (compose, nginx 설정 등)"
 git pull --ff-only origin main
 
