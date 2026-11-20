@@ -11,5 +11,6 @@ public record CandidatePageResponse(List<Candidate> items, int page, int size, l
                                     long pendingTargetCount, long failedTargetCount) {
     public record Candidate(Long matchId, MatchType type, Long noticeId, Long sightingId, String imageUrl,
                             double similarity, String shelterName, String place, LocalDate occurredOn,
-                            LocalDate noticeEndDate, Long daysLeft, boolean urgent, MatchFeedback feedback) {}
+                            LocalDate noticeEndDate, Long daysLeft, boolean urgent, MatchFeedback feedback,
+                            String memo) {}
 }

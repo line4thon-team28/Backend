@@ -208,7 +208,8 @@ class LostPetSightingFlowTest {
         long petId=mapper.readTree(lostResult.getResponse().getContentAsString()).at("/data/lostPetId").asLong();
         long lostSource=sources.findSourceId(SourceKind.LOST_PET,petId).orElseThrow();
         worker.process(lostSource);
-        var sightResult=mvc.perform(sightingForm().file(photo()).with(r->{
+        String memo="빨간 목줄을 한 강아지를 공원 입구에서 봤습니다";
+        var sightResult=mvc.perform(sightingForm().file(photo()).param("memo",memo).with(r->{
                 r.setParameter("species","DOG"); r.setParameter("sido","6500000"); r.setParameter("sigungu","제주시");
                 return r;
             })).andExpect(status().isCreated()).andReturn();
@@ -221,6 +222,13 @@ class LostPetSightingFlowTest {
         mvc.perform(get("/api/v1/sightings/"+sightId)).andExpect(status().isOk())
             .andExpect(jsonPath("$.data.processingStatus").value("READY"))
             .andExpect(jsonPath("$.data.matchedCount").value(1));
+        for(String sort:List.of("similarity","deadline")) {
+            mvc.perform(get("/api/v1/lost-pets/"+petId+"/matches").param("sort",sort)
+                    .header("Authorization","Bearer "+token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[?(@.sightingId == "+sightId+")].memo")
+                    .value(org.hamcrest.Matchers.contains(memo)));
+        }
         mvc.perform(patch("/api/v1/lost-pets/"+petId).header("Authorization","Bearer "+token)
             .contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"FOUND\"}")).andExpect(status().isOk());
         mvc.perform(get("/api/v1/sightings/"+sightId)).andExpect(status().isOk())

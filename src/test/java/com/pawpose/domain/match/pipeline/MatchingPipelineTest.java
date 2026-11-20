@@ -154,6 +154,32 @@ class MatchingPipelineTest {
         assertThat(source(SourceKind.NOTICE, n.getId()).getStatus()).isEqualTo(ProcessingStatus.PENDING);
     }
 
+    @Test void matchingLostRegistrationReturnsShelterNoticeWithShelterNameAndNoSightingMemo() throws Exception {
+        pet = pets.save(LostPet.create(owner, Species.DOG));
+        Notice notice = Notice.builder().desertionNo(UUID.randomUUID().toString().substring(0,25))
+                .species(Species.DOG).happenDate(today).noticeStartDate(today).noticeEndDate(today.plusDays(7))
+                .imageUrl("https://www.animal.go.kr/shelter-candidate.png")
+                .careName("테스트 보호센터").happenPlace("제주시 공원").status(NoticeStatus.NOTICE).build();
+        notice.applyCollection(notice, "6500000", "6510000", UUID.randomUUID().toString(), LocalDateTime.now());
+        notices.save(notice);
+        tx.executeWithoutResult(status -> events.publishEvent(new NoticeCollectedEvent(notice.getId())));
+        worker.process(source(SourceKind.NOTICE, notice.getId()).getId());
+        comparisons.dispatchPending();
+        inputs.registerLostPet(pet.getId(), new MatchingProfile(
+                List.of("https://storage.example/same-dog.png"), today.minusDays(2),
+                "6500000", "6510000", null, null, "제주시 공원"));
+        runLost();
+
+        mvc.perform(get("/api/v1/lost-pets/" + pet.getId() + "/matches")
+                .header("Authorization", "Bearer " + jwt.createAccessToken(owner.getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.processingStatus").value("READY"))
+                .andExpect(jsonPath("$.data.items[0].type").value("NOTICE"))
+                .andExpect(jsonPath("$.data.items[0].noticeId").value(notice.getId()))
+                .andExpect(jsonPath("$.data.items[0].shelterName").value("테스트 보호센터"))
+                .andExpect(jsonPath("$.data.items[0].memo").value(org.hamcrest.Matchers.nullValue()));
+    }
+
     @Test void scoreUsesBestPhotoClampsAndRejectsInvalidVectors() {
         SimilarityScorer scorer = new SimilarityScorer();
         assertThat(scorer.score(new double[][]{{0,1},{1,0}}, new double[][]{{1,0}}, "same", "same", "white", "white", "1", "1").adjusted()).isEqualTo(1);
